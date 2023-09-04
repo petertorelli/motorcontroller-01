@@ -5,28 +5,21 @@
 
 typedef struct pidctl_s
 {
-	// I prefer attaching control to the struct
-	float *x;
-	float *y;
-	float *target;
+    float target;
+    float kp;
+    float ki;
+    float kd;
+    float ymin;
+    float ymax;
+    float period_s;
 
-	float kp;
-	float ki;
-	float kd;
-
-	float ymin;
-	float ymax;
-
-	float acc;
-
-	float xlast;
-	float tlast_s;
-
-	float period_s;
-
+    float _acc;
+    float _xlast;
+    float _tlast_s;
 } pidctl_t;
 
-void pidctl_prime(pidctl_t *p);
-void pidctl_compute(pidctl_t *p);
+void  pidctl_prime(pidctl_t *p);
+bool  pidctl_needs_update(pidctl_t *p);
+float pidctl_compute(pidctl_t *p, float _x);
 
 #endif /* PIDCTL_H_ */

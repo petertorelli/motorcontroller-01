@@ -9,7 +9,9 @@
 #define APP_H_
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "main.h"
 #include "pidctl.h"
