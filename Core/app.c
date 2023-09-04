@@ -101,8 +101,6 @@ set_motor(unsigned nmotor, int16_t speed_dir)
     GPIO_PinState a;
     GPIO_PinState b;
 
-    printf("Setting motor %d to %d / 10\n", nmotor, speed_dir);
-
     a = GPIO_PIN_RESET;
     b = GPIO_PIN_RESET;
 
@@ -115,8 +113,8 @@ set_motor(unsigned nmotor, int16_t speed_dir)
         b = GPIO_PIN_SET;
     }
 
-    HAL_GPIO_WritePin(g_a_ports[nmotor - 1], g_a_pins[nmotor], a);
-    HAL_GPIO_WritePin(g_b_ports[nmotor - 1], g_b_pins[nmotor], b);
+    HAL_GPIO_WritePin(g_a_ports[nmotor - 1], g_a_pins[nmotor - 1], a);
+    HAL_GPIO_WritePin(g_b_ports[nmotor - 1], g_b_pins[nmotor - 1], b);
 
     g_pids[nmotor - 1].target = abs(speed_dir);
 }
@@ -137,6 +135,7 @@ process_command(void)
     }
     else
     {
+        printf("Setting motor %d to %d / 10\n", nmotor, speed_dir);
         set_motor(nmotor, speed_dir);
     }
 }
