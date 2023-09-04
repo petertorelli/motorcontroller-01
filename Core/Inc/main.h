@@ -55,10 +55,19 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+// BUGBUG: THere's a bug in the CubeMX gui, I cannot ad an IP handle to TIM1
+#define M2_ENC_TIM htim1
 
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define M1_PWM_CHANNEL TIM_CHANNEL_2
+#define M2_PWM_CHANNEL TIM_CHANNEL_1
+#define M2_PWM_TIM htim16
+#define M1_PWM_TIM htim15
+#define M1_ENC_TIM htim2
+#define M1_CCR CCR2
+#define M2_CCR CCR1
 #define M1_CHA_Pin GPIO_PIN_0
 #define M1_CHA_GPIO_Port GPIOA
 #define M1_CHB_Pin GPIO_PIN_1
@@ -71,12 +80,12 @@ void Error_Handler(void);
 #define M1_INA_GPIO_Port GPIOA
 #define M1_INB_Pin GPIO_PIN_5
 #define M1_INB_GPIO_Port GPIOA
+#define M2_PWM_Pin GPIO_PIN_6
+#define M2_PWM_GPIO_Port GPIOA
 #define M2_CHA_Pin GPIO_PIN_8
 #define M2_CHA_GPIO_Port GPIOA
 #define M2_CHB_Pin GPIO_PIN_9
 #define M2_CHB_GPIO_Port GPIOA
-#define M2_PWM_Pin GPIO_PIN_11
-#define M2_PWM_GPIO_Port GPIOA
 #define VCP_RX_Pin GPIO_PIN_15
 #define VCP_RX_GPIO_Port GPIOA
 #define USER_LED_Pin GPIO_PIN_3
