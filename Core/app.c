@@ -100,6 +100,7 @@ set_motor(unsigned nmotor, int16_t speed_dir)
 {
     GPIO_PinState a;
     GPIO_PinState b;
+    float         t;
 
     a = GPIO_PIN_RESET;
     b = GPIO_PIN_RESET;
@@ -116,7 +117,12 @@ set_motor(unsigned nmotor, int16_t speed_dir)
     HAL_GPIO_WritePin(g_a_ports[nmotor - 1], g_a_pins[nmotor - 1], a);
     HAL_GPIO_WritePin(g_b_ports[nmotor - 1], g_b_pins[nmotor - 1], b);
 
-    g_pids[nmotor - 1].target = abs(speed_dir);
+    // TODO: Magic numbers
+    // Scale [0,1000] to [550, 900]
+    t = abs(speed_dir);
+    t = (t / 1000) * (900 - 550) + 550;
+
+    g_pids[nmotor - 1].target = t;
 }
 
 static void
