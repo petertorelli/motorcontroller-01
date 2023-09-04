@@ -21,7 +21,7 @@
  * set to drive them at 40 KHz, with an 80 MHz MCU.
  *
  * At 40 KHz, the motor doesn't turn until a duty cycle of ~50%. Above 90%
- * it becomes a flatter response. So [50%, 90%] is a very good line.
+ * it becomes a flatter response. So [55%, 90%] is a very good line.
  *
  * When sampling the encoder every 100 ms, all six motors have different
  * max pulse readings at 100% duty cycle. I'm assuming 240 pulses at 100%
@@ -31,7 +31,7 @@
  * Request Magnitude 0 -> 1000
  *
  * 	0     =   0.0%
- * 	1     =  50.0%
+ * 	1     =  55.0%
  * 	1000  =  90.0%
  *
  * There is no feed-forward on the PID to avoid large di/dt spikes. Instead
@@ -52,16 +52,18 @@ extern I2C_HandleTypeDef hi2c1;
 
 #define STANDARD_MOTOR_COMMAND 0x55u
 #define RX_BUFFER_SIZE         4u
-// The encoder is shared with the PWMs, and the count is 1000
-#define CTR_RESET (1000 >> 1)
+#define TIM_CTR_PERIOD         1000u
+#define CTR_RESET              (TIM_CTR_PERIOD >> 1)
+#define MIN_PWM                550u
+#define MAX_PWM                1000u
 
 static volatile bool g_i2c_data                  = false;
 uint8_t              g_rx_buffer[RX_BUFFER_SIZE] = { 0u, 0u, 0u, 0u };
 
-static GPIO_TypeDef * g_a_ports[] = { M1_INA_GPIO_Port, M2_INA_GPIO_Port };
-static GPIO_TypeDef * g_b_ports[] = { M1_INB_GPIO_Port, M2_INB_GPIO_Port };
-static uint32_t g_a_pins[]  = { M1_INA_Pin, M2_INA_Pin };
-static uint32_t g_b_pins[]  = { M1_INB_Pin, M2_INB_Pin };
+static GPIO_TypeDef *g_a_ports[] = { M1_INA_GPIO_Port, M2_INA_GPIO_Port };
+static GPIO_TypeDef *g_b_ports[] = { M1_INB_GPIO_Port, M2_INB_GPIO_Port };
+static uint32_t      g_a_pins[]  = { M1_INA_Pin, M2_INA_Pin };
+static uint32_t      g_b_pins[]  = { M1_INB_Pin, M2_INB_Pin };
 
 static pidctl_t g_pids[2];
 
@@ -117,10 +119,9 @@ set_motor(unsigned nmotor, int16_t speed_dir)
     HAL_GPIO_WritePin(g_a_ports[nmotor - 1], g_a_pins[nmotor - 1], a);
     HAL_GPIO_WritePin(g_b_ports[nmotor - 1], g_b_pins[nmotor - 1], b);
 
-    // TODO: Magic numbers
-    // Scale [0,1000] to [550, 900]
+    // Scale [0,1000] to [550,900]
     t = abs(speed_dir);
-    t = (t / 1000) * (900 - 550) + 550;
+    t = (t / TIM_CTR_PERIOD) * (MAX_PWM - MIN_PWM) + MIN_PWM;
 
     g_pids[nmotor - 1].target = t;
 }
