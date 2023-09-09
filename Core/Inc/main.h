@@ -61,21 +61,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define M1_PWM_CHANNEL TIM_CHANNEL_2
-#define M2_PWM_CHANNEL TIM_CHANNEL_1
+
+#define M2_ENC_TIM htim1
 #define M2_PWM_TIM htim16
-#define M1_PWM_TIM htim15
-#define M1_ENC_TIM htim2
 #define M1_CCR CCR2
+#define M1_PWM_TIM htim15
+#define M1_PWM_CH TIM_CHANNEL_2
 #define M2_CCR CCR1
-#define M1_CHA_Pin GPIO_PIN_0
-#define M1_CHA_GPIO_Port GPIOA
-#define M1_CHB_Pin GPIO_PIN_1
-#define M1_CHB_GPIO_Port GPIOA
+#define M2_PWM_CH TIM_CHANNEL_1
+#define M1_ENC_TIM htim2
+#define SERVER_I2C hi2c3
 #define VCP_TX_Pin GPIO_PIN_2
 #define VCP_TX_GPIO_Port GPIOA
-#define M1_PWM_Pin GPIO_PIN_3
-#define M1_PWM_GPIO_Port GPIOA
 #define M1_INA_Pin GPIO_PIN_4
 #define M1_INA_GPIO_Port GPIOA
 #define M1_INB_Pin GPIO_PIN_5
@@ -86,12 +83,12 @@ void Error_Handler(void);
 #define M2_CHA_GPIO_Port GPIOA
 #define M2_CHB_Pin GPIO_PIN_9
 #define M2_CHB_GPIO_Port GPIOA
+#define M2_INB_Pin GPIO_PIN_11
+#define M2_INB_GPIO_Port GPIOA
 #define VCP_RX_Pin GPIO_PIN_15
 #define VCP_RX_GPIO_Port GPIOA
 #define USER_LED_Pin GPIO_PIN_3
 #define USER_LED_GPIO_Port GPIOB
-#define M2_INB_Pin GPIO_PIN_4
-#define M2_INB_GPIO_Port GPIOB
 #define M2_INA_Pin GPIO_PIN_5
 #define M2_INA_GPIO_Port GPIOB
 
