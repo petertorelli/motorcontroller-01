@@ -186,28 +186,29 @@ app_init(void)
     g_pids[0].kd       = 0.0f;
     g_pids[0].ymin     = (float)MIN_PWM;
     g_pids[0].ymax     = (float)MAX_PWM;
-    g_pids[0].period_s = 0.010f;
+    g_pids[0].period_s = 0.10f;
 
     memcpy(&(g_pids[1]), &(g_pids[0]), sizeof(pidctl_t));
-
+#if 1
     printf("app_init: start encoders\n");
     M1_ENC_TIM.Instance->CNT = CTR_RESET;
     M2_ENC_TIM.Instance->CNT = CTR_RESET;
+    // Don't forget to set T1T2 encoder mode for QUADRATURE
     HAL_TIM_Encoder_Start(&M1_ENC_TIM, TIM_CHANNEL_1 | TIM_CHANNEL_2);
     HAL_TIM_Encoder_Start(&M2_ENC_TIM, TIM_CHANNEL_1 | TIM_CHANNEL_2);
 
     printf("app_init: setting motors to free-spin\n");
     HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_SET);
     HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_SET);
 
     printf("app_init: start PWMs\n");
-    M1_PWM_TIM.Instance->M1_CCR = MIN_PWM;
-    M2_PWM_TIM.Instance->M2_CCR = MIN_PWM;
+    M1_PWM_TIM.Instance->M1_CCR = 0;
+    M2_PWM_TIM.Instance->M2_CCR = 0;
     HAL_TIM_PWM_Start(&M1_PWM_TIM, M1_PWM_CH);
     HAL_TIM_PWM_Start(&M2_PWM_TIM, M2_PWM_CH);
-
+#endif
     printf("app_init: end\n");
 }
 
@@ -223,6 +224,7 @@ update_pids(void)
         // Get our 'y' values...
         m1y = pidctl_compute(&(g_pids[0]), m1x);
         m2y = pidctl_compute(&(g_pids[1]), m2x);
+        printf("%lu : M1 count = %f, M2 count = %f\n", HAL_GetTick(), m1x, m2x);
         // Update the PWM CCRs...
         M1_PWM_TIM.Instance->M1_CCR = (uint32_t)m1y;
         M2_PWM_TIM.Instance->M2_CCR = (uint32_t)m2y;
