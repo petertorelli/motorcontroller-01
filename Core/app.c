@@ -48,14 +48,22 @@
 
 #include "app.h"
 
-extern I2C_HandleTypeDef hi2c1;
+extern I2C_HandleTypeDef SERVER_I2C;
+
+extern TIM_HandleTypeDef M1_ENC_TIM;
+extern TIM_HandleTypeDef M1_PWM_TIM;
+
+extern TIM_HandleTypeDef M2_ENC_TIM;
+extern TIM_HandleTypeDef M2_PWM_TIM;
 
 #define STANDARD_MOTOR_COMMAND 0x55u
 #define RX_BUFFER_SIZE         4u
-#define TIM_CTR_PERIOD         1000u
+#define TIM_CTR_PERIOD         0x10000u
 #define CTR_RESET              (TIM_CTR_PERIOD >> 1)
 #define MIN_PWM                550u
 #define MAX_PWM                1000u
+#define MIN_SPEED              -1000
+#define MAX_SPEED              1000
 
 static volatile bool g_i2c_data                  = false;
 uint8_t              g_rx_buffer[RX_BUFFER_SIZE] = { 0u, 0u, 0u, 0u };
@@ -76,7 +84,7 @@ static float m2y;
 void
 HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-    if (hi2c == &hi2c1)
+    if (hi2c == &SERVER_I2C)
     {
         g_i2c_data = true;
     }
@@ -119,9 +127,17 @@ set_motor(unsigned nmotor, int16_t speed_dir)
     HAL_GPIO_WritePin(g_a_ports[nmotor - 1], g_a_pins[nmotor - 1], a);
     HAL_GPIO_WritePin(g_b_ports[nmotor - 1], g_b_pins[nmotor - 1], b);
 
-    // Scale [0,1000] to [550,900]
-    t = abs(speed_dir);
-    t = (t / TIM_CTR_PERIOD) * (MAX_PWM - MIN_PWM) + MIN_PWM;
+    // Don't scale out of zero.
+    if (speed_dir == 0)
+    {
+        t = 0.0f;
+    }
+    else
+    {
+        // Scale [0,1000] to [550,900]
+        t = abs(speed_dir);
+        t = (t / TIM_CTR_PERIOD) * (MAX_PWM - MIN_PWM) + MIN_PWM;
+    }
 
     g_pids[nmotor - 1].target = t;
 }
@@ -134,7 +150,7 @@ process_command(void)
     int16_t speed_dir = (g_rx_buffer[3] << 8) | g_rx_buffer[2];
 
     if ((command != STANDARD_MOTOR_COMMAND) || (nmotor < 1 || nmotor > 2)
-        || (speed_dir < -1000 || speed_dir > 1000))
+        || (speed_dir < MIN_SPEED || speed_dir > MAX_SPEED))
     {
         printf("Invalid packet: 0x%02x %d -> %d\n", command, nmotor, speed_dir);
         // hard_shutdown();
@@ -153,13 +169,14 @@ app_init(void)
     HAL_StatusTypeDef stat = HAL_OK;
 
     printf("app_init: begin\n");
-    stat = HAL_I2C_Slave_Receive_IT(&hi2c1, g_rx_buffer, RX_BUFFER_SIZE);
+
+    printf("app_init: priming i2c\n");
+    stat = HAL_I2C_Slave_Receive_IT(&SERVER_I2C, g_rx_buffer, RX_BUFFER_SIZE);
     if (stat != HAL_OK)
     {
         printf("ERROR: Failed to set initial receive: 0x%02x\n", stat);
         Error_Handler();
     }
-    printf("app_init: end\n");
 
     memset(&(g_pids[0]), 0, sizeof(pidctl_t));
 
@@ -167,11 +184,31 @@ app_init(void)
     g_pids[0].kp       = 0.0f;
     g_pids[0].ki       = 4.0f;
     g_pids[0].kd       = 0.0f;
-    g_pids[0].ymin     = 550.0f;
-    g_pids[0].ymax     = 900.0f;
+    g_pids[0].ymin     = (float)MIN_PWM;
+    g_pids[0].ymax     = (float)MAX_PWM;
     g_pids[0].period_s = 0.010f;
 
     memcpy(&(g_pids[1]), &(g_pids[0]), sizeof(pidctl_t));
+
+    printf("app_init: start encoders\n");
+    M1_ENC_TIM.Instance->CNT = CTR_RESET;
+    M2_ENC_TIM.Instance->CNT = CTR_RESET;
+    HAL_TIM_Encoder_Start(&M1_ENC_TIM, TIM_CHANNEL_1 | TIM_CHANNEL_2);
+    HAL_TIM_Encoder_Start(&M2_ENC_TIM, TIM_CHANNEL_1 | TIM_CHANNEL_2);
+
+    printf("app_init: setting motors to free-spin\n");
+    HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
+
+    printf("app_init: start PWMs\n");
+    M1_PWM_TIM.Instance->M1_CCR = MIN_PWM;
+    M2_PWM_TIM.Instance->M2_CCR = MIN_PWM;
+    HAL_TIM_PWM_Start(&M1_PWM_TIM, M1_PWM_CH);
+    HAL_TIM_PWM_Start(&M2_PWM_TIM, M2_PWM_CH);
+
+    printf("app_init: end\n");
 }
 
 void
@@ -180,20 +217,18 @@ update_pids(void)
     // Update both pids on the same interval
     if (pidctl_needs_update(&(g_pids[0])))
     {
-        // TODO: Motor 1 is TIM2 and Motor 2 is TIM1... seriously dude?
-
         // Read our 'x' magnitudes...
-        m1x = abs(TIM2->CNT - CTR_RESET);
-        m2x = abs(TIM1->CNT - CTR_RESET);
+        m1x = abs(M1_ENC_TIM.Instance->CNT - CTR_RESET);
+        m2x = abs(M2_ENC_TIM.Instance->CNT - CTR_RESET);
         // Get our 'y' values...
         m1y = pidctl_compute(&(g_pids[0]), m1x);
         m2y = pidctl_compute(&(g_pids[1]), m2x);
         // Update the PWM CCRs...
-        TIM1->CCR1 = (uint32_t)m2y;
-        TIM2->CCR1 = (uint32_t)m1y;
+        M1_PWM_TIM.Instance->M1_CCR = (uint32_t)m1y;
+        M2_PWM_TIM.Instance->M2_CCR = (uint32_t)m2y;
         // Clear the encoders...
-        TIM2->CNT = CTR_RESET;
-        TIM1->CNT = CTR_RESET;
+        M1_ENC_TIM.Instance->CNT = CTR_RESET;
+        M2_ENC_TIM.Instance->CNT = CTR_RESET;
     }
 }
 
@@ -206,7 +241,8 @@ app_loop(void)
     {
         g_i2c_data = false;
         process_command();
-        stat = HAL_I2C_Slave_Receive_IT(&hi2c1, g_rx_buffer, RX_BUFFER_SIZE);
+        stat = HAL_I2C_Slave_Receive_IT(
+            &SERVER_I2C, g_rx_buffer, RX_BUFFER_SIZE);
         if (stat != HAL_OK)
         {
             printf("ERROR: Failed subsequent receive: 0x%02x\n", stat);
