@@ -88,6 +88,10 @@ void Error_Handler(void);
 #define USER_LED_GPIO_Port GPIOB
 #define M2_INA_Pin GPIO_PIN_5
 #define M2_INA_GPIO_Port GPIOB
+#define I2C_ADDR1_Pin GPIO_PIN_6
+#define I2C_ADDR1_GPIO_Port GPIOB
+#define I2C_ADDR0_Pin GPIO_PIN_7
+#define I2C_ADDR0_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

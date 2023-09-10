@@ -78,7 +78,22 @@ static void MX_I2C3_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	// Set I2C address based on GPIO
+	GPIO_PinState pin;
+	uint32_t addr = 0x70;
+	pin = HAL_GPIO_ReadPin(I2C_ADDR0_GPIO_Port, I2C_ADDR0_Pin);
+	addr |= (pin == GPIO_PIN_SET) ? 0x1 : 0x0;
+	pin = HAL_GPIO_ReadPin(I2C_ADDR1_GPIO_Port, I2C_ADDR1_Pin);
+	addr |= (pin == GPIO_PIN_SET) ? 0x2 : 0x0;
+	if (HAL_I2C_DeInit(&hi2c3) != HAL_OK)
+	{
+    	Error_Handler();
+	}
+	hi2c3.Init.OwnAddress1 = addr;
+    if (HAL_I2C_Init(&hi2c3) != HAL_OK)
+	{
+    	Error_Handler();
+	}
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -514,6 +529,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : I2C_ADDR1_Pin I2C_ADDR0_Pin */
+  GPIO_InitStruct.Pin = I2C_ADDR1_Pin|I2C_ADDR0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
