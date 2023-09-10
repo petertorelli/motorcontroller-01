@@ -1,7 +1,7 @@
 /**
  * Every 4-byte packet from the I2C channel triggers an interrupt.
  * Byte 0: Command. Always 0x55
- * Byte 1: Motor number. Must be 1 or 2
+ * Byte 1: Motor # mask: M1 = (1 << 0) || M2 = (1 << 1)
  * Byte 2: int16. Speed and direction. Negative = backward.
  *         Encoding from -1000, 1000 => +/-100.0% in .1% incre,emts/
  *
@@ -49,11 +49,11 @@
  *
  * - PID filter "I" mode is laggy. Needs better tuning.
  *
- * - The direction of the INA/B motor controllers can change before the pid has a chance
- *   to respond. This means if we go from 100.0 to -1.0 it will immediately switch to
- *   -100.0 until the PID can respond. We should probably use the quadrature to set the
- *   direction control bits and not the requested sign. This discontinuity should be
- *   checked for ... somewhere?
+ * - The direction of the INA/B motor controllers can change before the pid has
+ * a chance to respond. This means if we go from 100.0 to -1.0 it will
+ * immediately switch to -100.0 until the PID can respond. We should probably
+ * use the quadrature to set the direction control bits and not the requested
+ * sign. This discontinuity should be checked for ... somewhere?
  */
 
 #include "app.h"
@@ -107,12 +107,12 @@ static void
 hard_shutdown(void)
 {
     printf("hard_shutdown(): now\n");
-	M1_PWM_TIM.Instance->M1_CCR = 0;
-	HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
-	M2_PWM_TIM.Instance->M2_CCR = 0;
-	HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
+    M1_PWM_TIM.Instance->M1_CCR = 0;
+    HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
+    M2_PWM_TIM.Instance->M2_CCR = 0;
+    HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
 }
 /**
  * Change the target setpoint for the motor's PID.
@@ -145,15 +145,15 @@ set_motor(unsigned mask, int16_t speed_dir)
         t = 0.0f;
         if (mask & 1)
         {
-			M1_PWM_TIM.Instance->M1_CCR = 0;
-			HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
+            M1_PWM_TIM.Instance->M1_CCR = 0;
+            HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
         }
         if (mask & 2)
         {
-			M2_PWM_TIM.Instance->M2_CCR = 0;
-			HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
-			HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
+            M2_PWM_TIM.Instance->M2_CCR = 0;
+            HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
         }
     }
     else
@@ -164,17 +164,15 @@ set_motor(unsigned mask, int16_t speed_dir)
     // TODO: Changing direction before setting the PID is discontinuous
     if (mask & 1)
     {
-    	g_pids[0].target = t;
+        g_pids[0].target = t;
         HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], a);
         HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], b);
-
     }
     if (mask & 2)
     {
-    	g_pids[1].target = t;
+        g_pids[1].target = t;
         HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], a);
         HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], b);
-
     }
 }
 
