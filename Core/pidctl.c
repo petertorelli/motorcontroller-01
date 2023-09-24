@@ -30,15 +30,14 @@ pidctl_prime(pidctl_t *p)
 float
 pidctl_compute(pidctl_t *p, float _x)
 {
-    float error;
     float d;
     float y;
 
-    error       = p->target - _x;
-    p->_acc     = p->_acc + p->ki * error;
+    p->error    = p->target - _x;
+    p->_acc     = p->_acc + p->ki * p->error;
     p->_acc     = CLAMP(p->_acc, p->ymin, p->ymax);
     d           = _x - p->_xlast;
-    y           = (p->kp * error) + p->_acc - (p->kd * d);
+    y           = (p->kp * p->error) + p->_acc - (p->kd * d);
     y           = CLAMP(y, p->ymin, p->ymax);
     p->_xlast   = _x;
     p->_tlast_s = _get_tick_s();

@@ -12,6 +12,7 @@ typedef struct pidctl_s
     float ymin;
     float ymax;
     float period_s;
+    float error;
 
     float _acc;
     float _xlast;

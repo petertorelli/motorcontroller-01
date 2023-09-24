@@ -69,7 +69,6 @@ void Error_Handler(void);
 #define M2_CCR CCR1
 #define M2_PWM_CH TIM_CHANNEL_1
 #define M1_ENC_TIM htim2
-#define SERVER_I2C hi2c3
 #define VCP_TX_Pin GPIO_PIN_2
 #define VCP_TX_GPIO_Port GPIOA
 #define M1_INA_Pin GPIO_PIN_4
@@ -88,10 +87,6 @@ void Error_Handler(void);
 #define USER_LED_GPIO_Port GPIOB
 #define M2_INA_Pin GPIO_PIN_5
 #define M2_INA_GPIO_Port GPIOB
-#define I2C_ADDR1_Pin GPIO_PIN_6
-#define I2C_ADDR1_GPIO_Port GPIOB
-#define I2C_ADDR0_Pin GPIO_PIN_7
-#define I2C_ADDR0_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
