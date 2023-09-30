@@ -57,12 +57,12 @@ DMA_HandleTypeDef hdma_usart1_rx;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
-static void MX_TIM1_Init(void);
-static void MX_TIM2_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_TIM15_Init(void);
 static void MX_TIM16_Init(void);
+static void MX_USART2_UART_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -79,24 +79,7 @@ static void MX_USART1_UART_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-#ifdef SET_I2C_ADDR_VIA_GPIO
-	// Set I2C address based on GPIO
-	GPIO_PinState pin;
-	uint32_t addr = 0x70;
-	pin = HAL_GPIO_ReadPin(I2C_ADDR0_GPIO_Port, I2C_ADDR0_Pin);
-	addr |= (pin == GPIO_PIN_SET) ? 0x1 : 0x0;
-	pin = HAL_GPIO_ReadPin(I2C_ADDR1_GPIO_Port, I2C_ADDR1_Pin);
-	addr |= (pin == GPIO_PIN_SET) ? 0x2 : 0x0;
-	if (HAL_I2C_DeInit(&hi2c3) != HAL_OK)
-	{
-    	Error_Handler();
-	}
-	hi2c3.Init.OwnAddress1 = addr;
-    if (HAL_I2C_Init(&hi2c3) != HAL_OK)
-	{
-    	Error_Handler();
-	}
-#endif
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -118,12 +101,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
-  MX_TIM1_Init();
-  MX_TIM2_Init();
-  MX_USART2_UART_Init();
   MX_TIM15_Init();
   MX_TIM16_Init();
+  MX_USART2_UART_Init();
   MX_USART1_UART_Init();
+  MX_TIM1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   app_init();
   /* USER CODE END 2 */
@@ -437,7 +420,7 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.Mode = UART_MODE_RX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
   huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
@@ -515,24 +498,25 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, M1_INA_Pin|M1_INB_Pin|M2_INB_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_11, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, USER_LED_Pin|M2_INA_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : M1_INA_Pin M1_INB_Pin M2_INB_Pin */
-  GPIO_InitStruct.Pin = M1_INA_Pin|M1_INB_Pin|M2_INB_Pin;
+  /*Configure GPIO pins : PA4 PA5 PA11 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : USER_LED_Pin M2_INA_Pin */
-  GPIO_InitStruct.Pin = USER_LED_Pin|M2_INA_Pin;
+  /*Configure GPIO pin : PB5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -553,7 +537,6 @@ reset_uart(void)
 	}
 	MX_USART1_UART_Init();
 }
-
 /* USER CODE END 4 */
 
 /**
@@ -567,11 +550,6 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-	  HAL_GPIO_TogglePin(USER_LED_GPIO_Port, USER_LED_Pin);
-	  for (int i=0; i<(5*1000*1000); ++i)
-	  {
-		  __asm("nop");
-	  }
   }
   /* USER CODE END Error_Handler_Debug */
 }

@@ -1,79 +1,39 @@
-/**
- * Every 4-byte packet from the UART channel triggers an interrupt.
- * Byte 0: Command. Always 0x55
- * Byte 1: Motor # mask: M1 = (1 << 0) || M2 = (1 << 1)
- * Byte 2: int16. Speed and direction. Negative = backward.
- *         Encoding from -1000, 1000 => +/-100.0% in .1% incre,emts/
- *
- * Notes:
- *
- * 1. Use PB_7 for I2C1 Data doesn't work. This pin is always pulled low.
- *    Switching to pin PA_10 fixes this. It even screws up with USART1!
- * 2. When sending a fixed number of bytes, clock stretching must be
- *    disabled on the peripheral I2C device (e.g., this one).
- * 3. Switched to UART because couldn't track down 3~5 minute ARLO bug.
- *
- * PWM and Motors:
- *
- * This is written for the "goBILDA Yellowjacket 223 rpm" DC motors. They
- * consist of a ~6000 rpm 12V motor with a gearbox at 26.9:1 reduction.
- * Below ~35 KHz, the response curve becomes very nonlinear. This app is
- * set to drive them at 40 KHz, with an 80 MHz MCU.
- *
- * At 40 KHz, the motor doesn't turn until a duty cycle of ~50%. Above 90%
- * it becomes a flatter response. So [55%, 90%] is a very good line.
- *
- * When sampling the encoder every 100 ms, all six motors have different
- * max pulse readings at 100% duty cycle. I'm assuming 240 pulses at 100%
- * is the maximum for all of them. The CCR for the PWMs is set to 1000. The
- * conversion from the magnitude of the reques to the PWM should follow:
- *
- * Request Magnitude 0 -> 1000
- *
- * 	0     =   0.0%
- * 	1     =  55.0%
- * 	1000  =  90.0%
- *
- * There is no feed-forward on the PID to avoid large di/dt spikes. Instead
- * we rely just on the "I" term to bring the motor up to speed.
- *
- * The encoders are shared with the PWM for both motors. The PWM sets the CRR
- * which is 1000. These 223 rpm motors at full speed 10ms sampling produce
- * ~240 pulses per sample. This means resetting the counter to 500 will at
- * most vary between 260 and 740 counts per sample, when they are reset. So
- * there will not be any overflow/underflow of the encoder at 10ms for these
- * motors. (Changing the motors or sample rate will impact this.)
- *
- *
- * Concerns:
- *
- * - PID filter "I" mode is laggy. Needs better tuning.
- *
- * - The direction of the INA/B motor controllers can change before the pid has
- * a chance to respond. This means if we go from 100.0 to -1.0 it will
- * immediately switch to -100.0 until the PID can respond. We should probably
- * use the quadrature to set the direction control bits and not the requested
- * sign. This discontinuity should be checked for ... somewhere?
- *
- *
- * Bugs:
- * 1. ARLO/AF bugs at 10 msec updates. Removed all the printfs and they went
- * away. Still not driving motors though. Let's try that.
- */
-
 #include "app.h"
 
 extern UART_HandleTypeDef huart1;
 
-extern TIM_HandleTypeDef M1_ENC_TIM;
-extern TIM_HandleTypeDef M1_PWM_TIM;
-extern TIM_HandleTypeDef M2_ENC_TIM;
-extern TIM_HandleTypeDef M2_PWM_TIM;
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim15;
+extern TIM_HandleTypeDef htim16;
+
+// Pin renames
+
+#define m1_pwm_htim    htim15
+#define m2_pwm_htim    htim16
+#define M1_PWM_CCR     (TIM15->CCR2)
+#define M2_PWM_CCR     (TIM16->CCR1)
+#define M1_PWM_CHANNEL TIM_CHANNEL_2
+#define M2_PWM_CHANNEL TIM_CHANNEL_1
+
+#define m1_enc_htim    htim2
+#define m2_enc_htim    htim1
+#define M1_ENC_TIM_CNT (TIM2->CNT)
+#define M2_ENC_TIM_CNT (TIM1->CNT)
+
+#define M1_INA_PORT GPIOA
+#define M1_INB_PORT GPIOA
+#define M2_INA_PORT GPIOB
+#define M2_INB_PORT GPIOA
+#define M1_INA_PIN  GPIO_PIN_4
+#define M1_INB_PIN  GPIO_PIN_5
+#define M2_INA_PIN  GPIO_PIN_5
+#define M2_INB_PIN  GPIO_PIN_11
 
 #define STANDARD_MOTOR_COMMAND 0x55u
 #define RX_BUFFER_SIZE         4u
-#define TIM_CTR_PERIOD         0x10000u
-#define CTR_RESET              (TIM_CTR_PERIOD >> 1)
+#define TIM_CNT_PERIOD         0x10000u
+#define CNT_RESET              (TIM_CNT_PERIOD >> 1)
 #define MIN_PWM                500u
 #define MAX_PWM                1000u
 #define MIN_SPEED              -1000
@@ -107,12 +67,6 @@ static uint32_t g_pkt_count = 0u;
 
 // Our pid control
 static pidctl_t g_pids[2];
-
-// TODO: Had a plan to use indices, but it failed. Remove these four lines.
-static GPIO_TypeDef *g_a_ports[] = { M1_INA_GPIO_Port, M2_INA_GPIO_Port };
-static GPIO_TypeDef *g_b_ports[] = { M1_INB_GPIO_Port, M2_INB_GPIO_Port };
-static uint32_t      g_a_pins[]  = { M1_INA_Pin, M2_INA_Pin };
-static uint32_t      g_b_pins[]  = { M1_INB_Pin, M2_INB_Pin };
 
 static void
 prime_uart(void)
@@ -169,16 +123,16 @@ static void
 hard_shutdown(void)
 {
     // Turn off PWMs before anything else (even printf)
-    M2_PWM_TIM.Instance->M2_CCR = 0;
-    M1_PWM_TIM.Instance->M1_CCR = 0;
+    M1_PWM_CCR = 0;
+    M2_PWM_CCR = 0;
 
     printf("hard_shutdown(): now\n");
 
     // Reset motor direction GPIOs
-    HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M1_INA_PORT, M1_INA_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M1_INB_PORT, M1_INB_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M2_INA_PORT, M2_INA_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M2_INB_PORT, M2_INB_PIN, GPIO_PIN_RESET);
 
     // Reset PIDs so that if we re-start we don't start w/high PWM
     reset_pids();
@@ -216,17 +170,17 @@ set_motor(unsigned mask, int16_t speed_dir)
         t = 0.0f;
         if (mask & 1)
         {
-            printf("Stop 1\n");
-            M1_PWM_TIM.Instance->M1_CCR = 0;
-            HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
+            M1_PWM_CCR = 0;
+            HAL_GPIO_WritePin(M1_INA_PORT, M1_INA_PIN, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(M1_INB_PORT, M1_INB_PIN, GPIO_PIN_RESET);
+            printf("Stopped 1\n");
         }
         if (mask & 2)
         {
-            printf("Stop 2\n");
-            M2_PWM_TIM.Instance->M2_CCR = 0;
-            HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
-            HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
+            M2_PWM_CCR = 0;
+            HAL_GPIO_WritePin(M2_INA_PORT, M2_INA_PIN, GPIO_PIN_RESET);
+            HAL_GPIO_WritePin(M2_INB_PORT, M2_INB_PIN, GPIO_PIN_RESET);
+            printf("Stopped 2\n");
         }
     }
     else
@@ -244,15 +198,15 @@ set_motor(unsigned mask, int16_t speed_dir)
     {
         //    	printf("Set target 1 to %f (%d)\n", t, speed_dir);
         g_pids[0].target = t;
-        HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], a);
-        HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], b);
+        HAL_GPIO_WritePin(M1_INA_PORT, M1_INA_PIN, a);
+        HAL_GPIO_WritePin(M1_INB_PORT, M1_INB_PIN, b);
     }
     if (mask & 2)
     {
         //   	printf("Set target 2 to %f (%d)\n", t, speed_dir);
         g_pids[1].target = t;
-        HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], a);
-        HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], b);
+        HAL_GPIO_WritePin(M2_INA_PORT, M2_INA_PIN, a);
+        HAL_GPIO_WritePin(M2_INB_PORT, M2_INB_PIN, b);
     }
 }
 
@@ -281,7 +235,7 @@ parse_pkt(void)
                g_save_buffer[1],
                g_save_buffer[2],
                g_save_buffer[3]);
-        //hard_shutdown();
+        // hard_shutdown();
         HAL_Delay(100);
         reset_uart();
         prime_uart();
@@ -303,24 +257,23 @@ app_init(void)
     printf("app_init: reset PIDs\n");
     reset_pids();
 
-    printf("app_init: start encoders\n");
-    M1_ENC_TIM.Instance->CNT = CTR_RESET;
-    M2_ENC_TIM.Instance->CNT = CTR_RESET;
-    // Don't forget to set T1T2 encoder mode for QUADRATURE
-    HAL_TIM_Encoder_Start(&M1_ENC_TIM, TIM_CHANNEL_1 | TIM_CHANNEL_2);
-    HAL_TIM_Encoder_Start(&M2_ENC_TIM, TIM_CHANNEL_1 | TIM_CHANNEL_2);
+    printf("app_init: Start encoders\n");
+    M1_ENC_TIM_CNT = CNT_RESET;
+    M2_ENC_TIM_CNT = CNT_RESET;
+    HAL_TIM_Encoder_Start(&m1_enc_htim, TIM_CHANNEL_1 | TIM_CHANNEL_2);
+    HAL_TIM_Encoder_Start(&m2_enc_htim, TIM_CHANNEL_1 | TIM_CHANNEL_2);
+
+    printf("app_init: Start PWMs\n");
+    M1_PWM_CCR = 0;
+    M2_PWM_CCR = 0;
+    HAL_TIM_PWM_Start(&m1_pwm_htim, M1_PWM_CHANNEL);
+    HAL_TIM_PWM_Start(&m2_pwm_htim, M2_PWM_CHANNEL);
 
     printf("app_init: setting motors to free-spin\n");
-    HAL_GPIO_WritePin(g_a_ports[0], g_a_pins[0], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_b_ports[0], g_b_pins[0], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_a_ports[1], g_a_pins[1], GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(g_b_ports[1], g_b_pins[1], GPIO_PIN_RESET);
-
-    printf("app_init: start PWMs\n");
-    M1_PWM_TIM.Instance->M1_CCR = 0;
-    M2_PWM_TIM.Instance->M2_CCR = 0;
-    HAL_TIM_PWM_Start(&M1_PWM_TIM, M1_PWM_CH);
-    HAL_TIM_PWM_Start(&M2_PWM_TIM, M2_PWM_CH);
+    HAL_GPIO_WritePin(M1_INA_PORT, M1_INA_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M1_INB_PORT, M1_INB_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M2_INA_PORT, M2_INA_PIN, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(M2_INB_PORT, M2_INB_PIN, GPIO_PIN_RESET);
 
     printf("app_init: waiting for %u DMA bytes over UART\n", RX_BUFFER_SIZE);
     prime_uart();
@@ -341,17 +294,17 @@ update_pids(void)
     {
         g_computing_pid = true;
         // Read our 'x' magnitudes...
-        m1x = abs(M1_ENC_TIM.Instance->CNT - CTR_RESET);
-        m2x = abs(M2_ENC_TIM.Instance->CNT - CTR_RESET);
+        m1x = abs(M1_ENC_TIM_CNT - CNT_RESET);
+        m2x = abs(M2_ENC_TIM_CNT - CNT_RESET);
         // Get our 'y' values...
         m1y = pidctl_compute(&(g_pids[0]), m1x);
         m2y = pidctl_compute(&(g_pids[1]), m2x);
         // Update the PWM CCRs...
-        M1_PWM_TIM.Instance->M1_CCR = (uint32_t)m1y;
-        M2_PWM_TIM.Instance->M2_CCR = (uint32_t)m2y;
+        M1_PWM_CCR = (uint32_t)m1y;
+        M2_PWM_CCR = (uint32_t)m2y;
         // Clear the encoders...
-        M1_ENC_TIM.Instance->CNT = CTR_RESET;
-        M2_ENC_TIM.Instance->CNT = CTR_RESET;
+        M1_ENC_TIM_CNT = CNT_RESET;
+        M2_ENC_TIM_CNT = CNT_RESET;
 
         /*
         printf("t[%5.1f] m1 %5.1f -> %5.1f er = %5.1f ", g_pids[0].target, m1x,
